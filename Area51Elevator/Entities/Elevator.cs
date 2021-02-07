@@ -2,15 +2,15 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Area51Elevator.Contracts;
+using Area51Elevator.Entities;
 using Area51Elevator.Enumerations;
 
 namespace Area51Elevator
 {
     public class Elevator : IElevator
     {
-        #region Private fields
+        #region Private Fields
 
         private const int SPEED_PER_FLOOR_MILLISECONDS = 1000;
         private readonly List<KeyValuePair<SecurityLevel, FloorLevel>> authorizationDictionary = new List<KeyValuePair<SecurityLevel, FloorLevel>>()
@@ -28,82 +28,96 @@ namespace Area51Elevator
 
         private readonly Semaphore semaphore;
 
-        private volatile IAgent agent;
+        private IAgent agent;
 
-        private volatile FloorLevel currentFloor;
+        private FloorLevel currentFloor;
+
+        #endregion
+
+        #region Public Properties
+
+        public FloorLevel? DestFloor { get; set; }
+
+        public bool isAgentAuthorized { get; private set; }
 
         #endregion
 
         public Elevator()
         {
-            currentFloor = FloorLevel.G;
-            semaphore = new Semaphore(1, 1);
+            currentFloor = FloorLevel.G; // initial floor level
+            semaphore = new Semaphore(1, 1); // allowing only one agent inside
         }
-
-        public bool HasAgentInside => this.agent != null;
 
         #region Public Methods
 
-        public void EnterElevator(IAgent agent)
+        public void Start()
         {
-            this.agent = agent;
-
-            Console.WriteLine($"Agent {agent.Name} has entered the elevator.");
-
-            semaphore.WaitOne();
+            // works non-stop
+            while (true)
+            {
+                // if destFloor is set, someone has called the elevator
+                if (DestFloor.HasValue)
+                {
+                    Console.WriteLine();
+                    MoveToFloor(DestFloor.Value);
+                }
+                else
+                {
+                    Thread.Sleep(100);
+                    Console.Write(".");
+                }
+            }
         }
 
-        public void LeaveElevator()
+        public void StartBeingUsed(IAgent agent)
         {
-            Console.WriteLine($"Agent {agent.Name} is leaving the elevator.");
+            semaphore.WaitOne();
+
+            Console.WriteLine($"[Thread {Thread.CurrentThread.ManagedThreadId}] Agent {agent.Name} started using the elevator");
+
+            this.agent = agent;
+        }
+
+        public void StopBeingUsed(IAgent agent)
+        {
+            Console.WriteLine($"[Thread {Thread.CurrentThread.ManagedThreadId}] Agent {agent.Name} stopped using the elevator");
 
             this.agent = null;
 
             semaphore.Release();
         }
 
-        public void MoveToDestination(FloorLevel destinationFloor)
+        #endregion
+
+        #region Private Methods
+
+        private void MoveToFloor(FloorLevel destFloor)
         {
-            if (!HasAgentInside)
+            // if elevator is where he has to be do nothing
+            if (currentFloor == destFloor)
             {
-                semaphore.WaitOne();
+                Console.WriteLine($"[Thread {Thread.CurrentThread.ManagedThreadId}] Elevator already on the {destFloor} floor");
+                this.DestFloor = null;
+
+                // signal the agent thread that the elevator has moved to his current floor.
+                agent.ResetEvent.Set();
+
+                return;
             }
 
-            if (currentFloor == destinationFloor)
-            {
-                Console.WriteLine($"Elevator is already on the {destinationFloor} floor");
-            }
-            else
-            {
-                Console.WriteLine($"Elevator moving to {destinationFloor} floor...");
+            // elevator is moving, so we're waiting
+            Thread.Sleep(SPEED_PER_FLOOR_MILLISECONDS * Math.Abs(this.currentFloor - destFloor));
+            this.currentFloor = destFloor;
 
-                var floorDifference = Math.Abs(currentFloor - destinationFloor);
+            Console.WriteLine($"[Thread {Thread.CurrentThread.ManagedThreadId}] Elevator arrived on the {destFloor} floor");
 
-                Task.Delay(SPEED_PER_FLOOR_MILLISECONDS * floorDifference).Wait();
+            Console.WriteLine($"[Thread {Thread.CurrentThread.ManagedThreadId}] Elevator authorizing agent {agent.Name}");
+            isAgentAuthorized = authorizationDictionary.Any(e => e.Key == agent.SecurityLevel && e.Value == this.currentFloor);
 
-                Console.WriteLine($"Elevator reached floor {destinationFloor} ...");
+            // signaling the agent that the authorization is complete
+            agent.ResetEvent.Set();
 
-                currentFloor = destinationFloor;
-            }
-
-            if (!HasAgentInside)
-            {
-                semaphore.Release();
-            }
-        }
-
-        public bool IsAgentAuthorized()
-        {
-            Console.WriteLine($"Authorizing agent {agent.Name}");
-
-            if (authorizationDictionary.Any(e => e.Key == agent.securityLevel && e.Value == currentFloor))
-            {
-                Console.WriteLine($"Agent {agent.Name} authorized successfully");
-                return true;
-            }
-
-            Console.WriteLine($"Agent {agent.Name} authorization failed.");
-            return false;
+            this.DestFloor = null;
         }
 
         #endregion

@@ -4,12 +4,15 @@ namespace Area51Elevator.Contracts
 {
     public interface IElevator
     {
-        void EnterElevator(IAgent agent);
+        bool isAgentAuthorized { get; }
 
-        void LeaveElevator();
+        FloorLevel? DestFloor { get; set; }
 
-        void MoveToDestination(FloorLevel destinationFloor);
+        void Start();
 
-        bool IsAgentAuthorized();
+        void StartBeingUsed(IAgent agent);
+
+        void StopBeingUsed(IAgent agent);
+
     }
 }

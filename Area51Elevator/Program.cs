@@ -10,12 +10,19 @@ namespace Area51Elevator
     {
         static void Main(string[] args)
         {
-            var elevator = new Elevator();
-
-            var numberOfAgents = int.Parse(args[0]);
             var random = new Random();
 
+            // Starting the elevator in its own thread
+            var elevator = new Elevator();
+            var elevatorThread = new Thread(elevator.Start);
+
+            // Letting the user decide the number of agents
+            Console.Write("Enter number of agents: ");
+            var numberOfAgents = int.Parse(Console.ReadLine());
             var agentThreads = new List<Thread>(numberOfAgents);
+
+            // Start the elevator
+            elevatorThread.Start();
 
             // Generating and starting agents
             for (int i = 1; i <= numberOfAgents; i++)
